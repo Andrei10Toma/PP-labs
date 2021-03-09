@@ -22,7 +22,6 @@
 
 import Data.List
 
-
 identityInteger :: Integer -> Integer
 identityInteger x = x
 
@@ -70,8 +69,8 @@ myreverse (head:tail) = myreverse tail ++ [head]
 --                  => (rev[4]) ++ [3] ++ [2] ++ [1] =>
 --                  => (rev[]) ++ [4] ++ [3] ++ [2] ++ [1]
 
-my_if :: Bool -> a -> a -> a
-my_if condition ifTrue ifFalse =
+my_f :: Bool -> a -> a -> a
+my_f condition ifTrue ifFalse =
     if condition then
         ifTrue
     else ifFalse
@@ -90,19 +89,15 @@ max_3_integers_v2 a b c
 
 
 max_3_integers_v3 :: Integer -> Integer -> Integer -> Integer
-max_3_integers_v3 a b c = head $ reverse $ sort [a, b, c]
+max_3_integers_v3 a b c = maximum [a, b, c]
 
 -- exercitiul 13
 third_last_number_odd :: [Integer] -> Bool
-third_last_number_odd list = if (head $ tail $ tail $ reverse list) `mod` 2 == 0 then
-                                False
-                            else
-                                True
+third_last_number_odd list = ((head $ tail $ tail $ reverse list) `mod` 2) /= 0
 
 -- exercitiul 14
 list_sum :: [Integer] -> Integer
-list_sum [] = 0
-list_sum (head:tail) = head + list_sum tail
+list_sum = foldr (+) 0
 
 -- exercitul 15
 list_booleans :: [Bool] -> Bool
@@ -113,7 +108,7 @@ list_booleans (True : tail) = list_booleans tail
 -- exericitul 16
 filter_odd_numbers :: [Integer] -> [Integer]
 filter_odd_numbers [] = []
-filter_odd_numbers list = [x | x <- list, x `mod` 2 == 0]
+filter_odd_numbers list = [x | x <- list, even x]
 
 -- another version of solving
 -- filter_odd_numbers (head : tail) = 
@@ -130,7 +125,7 @@ boolean_to_integer (False : tail) = 0 : boolean_to_integer tail
 -- exercitiul 18
 f_18 :: [[Integer]] -> [Bool]
 f_18 [] = []
-f_18 l = (g (head l)) : (f_18 (tail l))
+f_18 l = g (head l) : f_18 (tail l)
     where
         g[] = True
         g l = h (tail l)
@@ -151,4 +146,4 @@ insert_list element (head : tail) | element < head = element : head : tail
 
 inssort :: [Integer] -> [Integer]
 inssort [] = []
-inssort (el : tail) = insert_list el (inssort tail)
+inssort (head : tail) = insert_list head $ inssort tail
