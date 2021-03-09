@@ -69,8 +69,8 @@ myreverse (head:tail) = myreverse tail ++ [head]
 --                  => (rev[4]) ++ [3] ++ [2] ++ [1] =>
 --                  => (rev[]) ++ [4] ++ [3] ++ [2] ++ [1]
 
-my_f :: Bool -> a -> a -> a
-my_f condition ifTrue ifFalse =
+myF :: Bool -> a -> a -> a
+myF condition ifTrue ifFalse =
     if condition then
         ifTrue
     else ifFalse
@@ -92,35 +92,36 @@ max_3_integers_v3 :: Integer -> Integer -> Integer -> Integer
 max_3_integers_v3 a b c = maximum [a, b, c]
 
 -- exercitiul 13
-third_last_number_odd :: [Integer] -> Bool
-third_last_number_odd list = ((head $ tail $ tail $ reverse list) `mod` 2) /= 0
+thirdLastNumberOdd :: [Integer] -> Bool
+thirdLastNumberOdd list = ((head $ tail $ tail $ reverse list) `mod` 2) /= 0
 
 -- exercitiul 14
-list_sum :: [Integer] -> Integer
-list_sum = foldr (+) 0
+listSum :: [Integer] -> Integer
+listSum [] = 0
+listSum (head : tail) = head + listSum tail
 
 -- exercitul 15
-list_booleans :: [Bool] -> Bool
-list_booleans [] = True
-list_booleans (False : tail) = False
-list_booleans (True : tail) = list_booleans tail
+listBooleans :: [Bool] -> Bool
+listBooleans [] = True
+listBooleans (False : tail) = False
+listBooleans (True : tail) = listBooleans tail
 
 -- exericitul 16
-filter_odd_numbers :: [Integer] -> [Integer]
-filter_odd_numbers [] = []
-filter_odd_numbers list = [x | x <- list, even x]
+filterOddNumbers :: [Integer] -> [Integer]
+filterOddNumbers [] = []
+filterOddNumbers list = [x | x <- list, x `mod` 2 == 0]
 
 -- another version of solving
--- filter_odd_numbers (head : tail) = 
+-- filterOddNumbers (head : tail) = 
     -- if head `mod` 2 == 0 then
-        -- [head] ++ filter_odd_numbers tai 
-           -- else filter_odd_numbers tail
+        -- [head] ++ filterOddNumbers tail 
+           -- else filterOddNumbers tail
 
 -- exericitiul 17
-boolean_to_integer :: [Bool] -> [Integer]
-boolean_to_integer [] = []
-boolean_to_integer (True : tail) = 1 : boolean_to_integer tail
-boolean_to_integer (False : tail) = 0 : boolean_to_integer tail
+booleanToInteger :: [Bool] -> [Integer]
+booleanToInteger [] = []
+booleanToInteger (True : tail) = 1 : booleanToInteger tail
+booleanToInteger (False : tail) = 0 : booleanToInteger tail
 
 -- exercitiul 18
 f_18 :: [[Integer]] -> [Bool]
@@ -133,17 +134,17 @@ f_18 l = g (head l) : f_18 (tail l)
         h l = False
 
 -- exercitiul 19
-sum_of_booleans :: [Bool] -> Integer
-sum_of_booleans [] = 0
-sum_of_booleans (True : tail) = 1 + sum_of_booleans tail
-sum_of_booleans (False : tail) = 0 + sum_of_booleans tail
+sumOfBooleans :: [Bool] -> Integer
+sumOfBooleans [] = 0
+sumOfBooleans (True : tail) = 1 + sumOfBooleans tail
+sumOfBooleans (False : tail) = 0 + sumOfBooleans tail
 
 -- exercitiul 20
-insert_list :: Integer -> [Integer] -> [Integer]
-insert_list element [] = [element]
-insert_list element (head : tail) | element < head = element : head : tail
-                                  | otherwise = head : insert_list element tail
+insertList :: Integer -> [Integer] -> [Integer]
+insertList element [] = [element]
+insertList element (head : tail) | element < head = element : head : tail
+                                  | otherwise = head : insertList element tail
 
-inssort :: [Integer] -> [Integer]
-inssort [] = []
-inssort (head : tail) = insert_list head $ inssort tail
+insSort :: [Integer] -> [Integer]
+insSort [] = []
+insSort (head : tail) = insertList head $ insSort tail
