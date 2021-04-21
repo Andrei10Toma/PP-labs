@@ -13,11 +13,26 @@ import Data.List
 import Text.Printf
 import Text.Read
 import Data.Maybe
+import qualified Data.Map as Map
 
 type CSV = String
 type Value = String
 type Row = [Value]
 type Table = [Row]
+
+hwGradesTest1 = [
+    ["Nume","Lab (1p)","T1 (0.5p)","T2 (1p)","T3 (1.5p)","Ex1 (0.25p)","Ex2 (0.25p)","Ex3 (0.25p)","Ex4 (0.25p)"],
+    ["Olivia Noah","0.42","0.49","1","1.05","","10","0",""],
+    ["Riley Jackson","0.85","0.5","1","1.5","0.25","0.13","0","0"],
+    ["Emma Aiden","","0.5","1","0.9","","","0",""],
+    ["Ava Elijah","0.86","0","","","0","0","0","0"]]
+
+hwGradesTest2 = [
+    ["Nume","Q1","Q2","Q3","Q4","Q5", "Ex1 (0.25p)", "Q6","Ex. Scris", "Ex2 (0.25p)"],
+    ["Olivia Noah","0","0","2","2","2", "2.73", "2","0.93", "0.7"],
+    ["Riley Jackson","2","2","2","2","2","", "1","1.2", ""],
+    ["Emma Aiden","2","1","2","1","0","2.73", "1","0.8", "0.7"]]
+
 
 {-
 	TASK SET 1
@@ -236,16 +251,50 @@ uniqueFields (x:xs) acc
     | x `elem` acc = uniqueFields xs acc
     | otherwise = uniqueFields xs (acc ++ [x])
 
+-- extract the common columns except the key column
+-- return a map with the common columns name to the positions in the tables
+getCommonColsExceptKey :: String -> Row -> Row ->  Map.Map String Integer
+getCommonColsExceptKey key r2 r1 = Map.filter (> 0) $ foldr op Map.empty r1
+    where
+        op el acc
+            | el == key = acc
+            | otherwise = Map.insert el (getColNumber el r2 0) acc
+
+-- build the row with the information from joining the tables
+buildRow :: Map.Map String Integer -> String -> Row -> Row -> Row -> Row -> Row -> Row
+buildRow _ _ r1 [] h1 _ = foldr op []
+    where
+        op colName acc
+            | colNumber1 /= -1 = (r1 !! colNumber1):acc
+            | otherwise = "":acc
+            where
+                colNumber1 = fromIntegral $ getColNumber colName h1 0
+buildRow commonColMap key r1 r2 header1 header2 = foldr op []
+    where
+        op colName acc
+            | colName == key = (r1 !! colNumber1):acc
+            | Map.member colName commonColMap && not (null (r2 !! fromIntegral (Map.findWithDefault (-1) colName commonColMap))) = (r2 !! fromIntegral (Map.findWithDefault (-1) colName commonColMap)):acc
+            | colNumber1 /= -1 = (r1 !! colNumber1):acc
+            | otherwise = (r2 !! colNumber2):acc
+            where
+                colNumber1 = fromIntegral $ getColNumber colName header1 0
+                colNumber2 = fromIntegral $ getColNumber colName header2 0
 
 tjoin :: String -> Table -> Table -> Table
-tjoin fieldName t1 t2 = uniqueFields (head t2) (head t1):foldr op [] (drop 1 t1)
+tjoin fieldName t1 t2 = fields:foldr op [] (drop 1 t1)
     where
+        fields = uniqueFields (head t2) (head t1)
+        -- 2 maps with the common collumns except the key from the tables
+        commonColsExceptKey = getCommonColsExceptKey fieldName (head t2) (head t1)
+        -- column number that contains the key from the first table
         colNumber1 = fromIntegral $ getColNumber fieldName (head t1) 0
+        -- column number that contains the key from the second table
         colNumber2 = fromIntegral $ getColNumber fieldName (head t2) 0
         op row acc
-            | not (null colFound) = (row ++ take colNumber2 (head colFound) ++ drop (colNumber2 + 1) (head colFound)):acc
-            | otherwise = (row ++ replicate (length (head t2) - 1) ""):acc
+            | not $ null colFound = buildRow commonColsExceptKey fieldName row (head colFound) (head t1) (head t2) fields:acc
+            | otherwise = buildRow commonColsExceptKey fieldName row [] (head t1) (head t2) fields:acc
             where
+                -- search the row with the given key from the second table
                 colFound = filter ((== row !! colNumber1).(!! colNumber2)) t2
 
 -- TASK 8
