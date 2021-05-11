@@ -6,6 +6,8 @@
 -}
 
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Tasks where
 
 import Dataset
@@ -19,19 +21,6 @@ type CSV = String
 type Value = String
 type Row = [Value]
 type Table = [Row]
-
-hwGradesTest1 = [
-    ["Nume","Lab (1p)","T1 (0.5p)","T2 (1p)","T3 (1.5p)","Ex1 (0.25p)","Ex2 (0.25p)","Ex3 (0.25p)","Ex4 (0.25p)"],
-    ["Olivia Noah","0.42","0.49","1","1.05","","10","0",""],
-    ["Riley Jackson","0.85","0.5","1","1.5","0.25","0.13","0","0"],
-    ["Emma Aiden","","0.5","1","0.9","","","0",""],
-    ["Ava Elijah","0.86","0","","","0","0","0","0"]]
-
-hwGradesTest2 = [
-    ["Nume","Q1","Q2","Q3","Q4","Q5", "Ex1 (0.25p)", "Q6","Ex. Scris", "Ex2 (0.25p)"],
-    ["Olivia Noah","0","0","2","2","2", "2.73", "2","0.93", "0.7"],
-    ["Riley Jackson","2","2","2","2","2","", "1","1.2", ""],
-    ["Emma Aiden","2","1","2","1","0","2.73", "1","0.8", "0.7"]]
 
 
 {-
@@ -319,3 +308,146 @@ projection colNames table = foldr op [] table
         op el acc = foldr op' [] colNumbers:acc
             where
                 op' el' acc' = (el !! el'):acc'
+
+data Query =
+    FromCSV CSV
+    | ToCSV Query
+    | AsList String Query
+    | Sort String Query
+    | ValueMap (Value -> Value) Query
+    | RowMap (Row -> Row) [String] Query
+    | VUnion Query Query
+    | HUnion Query Query
+    | TableJoin String Query Query
+    | Cartesian (Row -> Row -> Row) [String] Query Query
+    | Projection [String] Query
+    | forall a. FEval a => Filter (FilterCondition a) Query
+    | Graph EdgeOp Query
+
+data QResult = CSV CSV | Table Table | List [String]
+
+type EdgeOp = Row -> Row -> Maybe Value
+
+instance Show QResult where
+    show (CSV csv) = show csv
+    show (Table table) = write_csv table
+    show (List strings) = show strings
+
+class Eval a where
+    eval :: a -> QResult
+
+castQResultToTable :: QResult -> Table
+castQResultToTable (Table table) = table
+
+convertMaybe :: Maybe Value -> Value
+convertMaybe (Just value) = value
+convertMaybe Nothing = ""
+
+removeDuplicates :: Eq a => [a] -> [a] -> [a]
+removeDuplicates acc [] = acc
+removeDuplicates acc (x:xs)
+    | x `elem` acc = removeDuplicates acc xs
+    | otherwise = removeDuplicates (acc ++ [x]) xs
+
+instance Eval Query where
+    eval (FromCSV str) = Table (read_csv str)
+    eval (ToCSV query) = CSV (write_csv $ castQResultToTable $ eval query)
+    eval (AsList colName query) = List (as_list colName (castQResultToTable $ eval query))
+    eval (Sort colNmae query) = Table (tsort colNmae (castQResultToTable $ eval query))
+    eval (ValueMap op query) = Table (vmap op (castQResultToTable $ eval query))
+    eval (RowMap op colNames query) = Table (rmap op colNames (castQResultToTable $ eval query))
+    eval (VUnion query1 query2) = Table (vunion (castQResultToTable $ eval query1) (castQResultToTable $ eval query2))
+    eval (HUnion query1 query2) = Table (hunion (castQResultToTable $ eval query1) (castQResultToTable $ eval query2))
+    eval (TableJoin colName query1 query2) = Table (tjoin colName (castQResultToTable $ eval query1) (castQResultToTable $ eval query2))
+    eval (Cartesian op colNames query1 query2) = Table (cartesian op colNames (castQResultToTable $ eval query1) (castQResultToTable $ eval query2))
+    eval (Projection colNames query) = Table (projection colNames (castQResultToTable $ eval query))
+    -- special tretment for the case when the FilterCondition is FNot
+    eval (Filter (FNot filterCond) query) = Table (head table : [x | x <- tail table, not $ filterFunc x])
+        where
+            table = castQResultToTable $ eval query
+            filterFunc = feval (head table) filterCond
+    -- extract only the rows from the table that respect the filter condition
+    eval (Filter filterCond query) = Table (head table : [x | x <- tail table, filterFunc x ])
+        where
+            table = castQResultToTable $ eval query
+            filterFunc = feval (head table) filterCond
+    eval (Graph edgeOperation query) = Table (["From", "To", "Value"]:graphTable)
+        where
+            table = castQResultToTable $ eval query
+            -- first fold on the table
+            graphTable = removeDuplicates [] $ foldr op [] (tail table)
+                where
+                    -- second fold on the table
+                    op el acc = foldr op' [] (tail table) ++ acc
+                        where
+                            op' el' acc'
+                                -- if there are not the same row from the table and the edge operation is just build the row
+                                | el' /= el && isJust (edgeOperation el' el) && head el < head el' = [head el, head el', convertMaybe (edgeOperation el' el)]:acc'
+                                | el' /= el && isJust (edgeOperation el' el) && head el > head el' = [head el', head el, convertMaybe (edgeOperation el' el)]:acc'
+                                | otherwise = acc'
+
+data FilterCondition a =
+    Eq String a |
+    Lt String a |
+    Gt String a |
+    In String [a] |
+    FNot (FilterCondition a) |
+    FieldEq String String
+
+type FilterOp = Row -> Bool
+
+class FEval a where
+    feval :: [String] -> FilterCondition a -> FilterOp
+
+instance FEval Float where
+    feval colNames (Gt colName ref) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && (read (row !! colNumber) > ref)
+        where colNumber = fromIntegral $ getColNumber colName colNames 0
+    feval colNames (Eq colName ref) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && (read (row !! colNumber) == ref)
+        where colNumber = fromIntegral $ getColNumber colName colNames 0
+    feval colNames (Lt colName ref) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && (read (row !! colNumber) < ref)
+        where colNumber = fromIntegral $ getColNumber colName colNames 0
+    feval colNames (In colName refList) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && (read (row !! colNumber) `elem` refList)
+        where colNumber = fromIntegral $ getColNumber colName colNames 0
+    feval colNames (FNot filterCond) = feval colNames filterCond
+    feval colNames (FieldEq colName1 colName2) = \row ->    if isJust (readMaybe (row !! colNumber1) :: Maybe Float) && isJust (readMaybe (row !! colNumber2) :: Maybe Float) then (read (row !! colNumber1) :: Float) == (read (row !! colNumber2) :: Float)
+                                                            else isNothing (readMaybe (row !! colNumber1) :: Maybe Float) && isNothing (readMaybe (row !! colNumber2) :: Maybe Float) && row !! colNumber1 == "" && row !! colNumber2 == ""
+        where
+            colNumber1 = fromIntegral $ getColNumber colName1 colNames 0
+            colNumber2 = fromIntegral $ getColNumber colName2 colNames 0
+instance FEval String where
+    feval colNames (Eq colName ref) = \row -> row !! colNumber == ref
+        where colNumber = fromIntegral $ getColNumber colName colNames 0
+    feval colNames (Lt colName ref) = \row -> row !! colNumber < ref
+        where colNumber = fromIntegral $ getColNumber colName colNames 0
+    feval colNames (Gt colName ref) = \row -> row !! colNumber > ref
+        where colNumber = fromIntegral $ getColNumber colName colNames 0
+    feval colNames (In colName refList) = \row -> row !! colNumber `elem` refList
+        where colNumber = fromIntegral $ getColNumber colName colNames 0
+    feval colNames (FNot filterCond) = feval colNames filterCond
+    feval colNames (FieldEq colName1 colName2) = \row -> row !! colNumber1 == row !! colNumber2
+        where
+            colNumber1 = fromIntegral $ getColNumber colName1 colNames 0
+            colNumber2 = fromIntegral $ getColNumber colName2 colNames 0
+
+edgeOp3 l1 l2
+    -- extract only the distances that are greater or equal to 5
+    | distance >= 5 = Just (show distance)
+    | otherwise = Nothing 
+    where
+        -- calculate the distance
+        -- iterate through the lecture_grades table and check if the points from the questions are equal
+        distance = foldr op 0 [1..length (head lecture_grades) - 1]
+            where
+                op el acc
+                    -- check if the grades are equal
+                    | l1 !! el == l2 !! el = 1 + acc
+                    | otherwise = acc
+
+-- read the lecture_grades_csv, then filter out the entries that don't have an email
+-- after this create the graph with the edgeOp3 function defined above
+-- finally, the query is sorted by the value
+similarities_query = Sort "Value" $ Graph edgeOp3 $ Filter (FNot (Eq "Email" "")) $ FromCSV lecture_grades_csv
+    where
+        op el acc
+            | el == "" = acc
+            | otherwise = read el + acc
