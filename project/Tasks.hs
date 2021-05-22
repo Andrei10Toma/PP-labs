@@ -1,8 +1,8 @@
 {-
-	PP Project 2021
+    PP Project 2021
 
-	This is where you will write the implementation for the given tasks.
-	You can add other modules aswell.
+    This is where you will write the implementation for the given tasks.
+    You can add other modules aswell.
 -}
 
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
@@ -15,6 +15,7 @@ import Data.List
 import Text.Printf
 import Text.Read
 import Data.Maybe
+import Data.Array
 import qualified Data.Map as Map
 
 type CSV = String
@@ -24,7 +25,7 @@ type Table = [Row]
 
 
 {-
-	TASK SET 1
+    TASK SET 1
 -}
 -- Task 1
 examSumaryHeader = ["Q", "0", "1", "2"]
@@ -146,7 +147,7 @@ get_exam_diff_table =
         where
             op row acc =
                 ([extractName row] ++ [printf "%.2f" $ calculateGradeInterview $ init $ tail row] ++ [printf "%.2f" (read (last row) :: Float)] ++
-                [printf "%.2f" $ abs ((calculateGradeInterview $ init $ tail row) - (read (last row) :: Float) :: Float)]):acc
+                [printf "%.2f" $ abs (calculateGradeInterview (init $ tail row) - (read (last row) :: Float) :: Float)]):acc
             sortCriteria first second
                 | last first /= last second = compare (read (last first) :: Float) (read (last second) :: Float)
                 | last first == last second = compare (head first) (head second)
@@ -195,7 +196,7 @@ tsort :: String -> Table -> Table
 tsort colName table = head table:sortBy sortCriteria (drop 1 table)
     where
         sortCriteria first second
-            | (first !! colNumber) == (second !! colNumber) = compare (head first) (head second)
+            | first !! colNumber == second !! colNumber = compare (head first) (head second)
             | isNothing (readMaybe (first !! colNumber) :: Maybe Float) && isNothing (readMaybe (second !! colNumber) :: Maybe Float) = compare (first !! colNumber) (second !! colNumber)
             | isJust (readMaybe (first !! colNumber) :: Maybe Float) && isJust (readMaybe (second !! colNumber) :: Maybe Float) = compare (read (first !! colNumber) :: Float) (read (second !! colNumber) :: Float)
             | isJust (readMaybe (first !! colNumber) :: Maybe Float) && isNothing (readMaybe (second !! colNumber) :: Maybe Float) = GT
@@ -211,7 +212,7 @@ rmap :: (Row -> Row) -> [String] -> Table -> Table
 rmap func newCol = (newCol:).map func.drop 1
 
 get_hw_grade_total :: Row -> Row
-get_hw_grade_total row = [head row] ++ [printf "%.2f" $ sum $ map op (drop 2 row)]
+get_hw_grade_total row = head row : [printf "%.2f" $ sum $ map op (drop 2 row)]
     where
         op el
             | el == "" = 0
@@ -309,6 +310,8 @@ projection colNames table = foldr op [] table
             where
                 op' el' acc' = (el !! el'):acc'
 
+-- TASK SET 3
+
 data Query =
     FromCSV CSV
     | ToCSV Query
@@ -338,6 +341,9 @@ class Eval a where
 
 castQResultToTable :: QResult -> Table
 castQResultToTable (Table table) = table
+
+castQResultToList :: QResult -> [Value]
+castQResultToList (List list) = list
 
 convertMaybe :: Maybe Value -> Value
 convertMaybe (Just value) = value
@@ -400,13 +406,13 @@ class FEval a where
     feval :: [String] -> FilterCondition a -> FilterOp
 
 instance FEval Float where
-    feval colNames (Gt colName ref) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && (read (row !! colNumber) > ref)
+    feval colNames (Gt colName ref) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && read (row !! colNumber) > ref
         where colNumber = fromIntegral $ getColNumber colName colNames 0
-    feval colNames (Eq colName ref) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && (read (row !! colNumber) == ref)
+    feval colNames (Eq colName ref) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && read (row !! colNumber) == ref
         where colNumber = fromIntegral $ getColNumber colName colNames 0
-    feval colNames (Lt colName ref) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && (read (row !! colNumber) < ref)
+    feval colNames (Lt colName ref) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && read (row !! colNumber) < ref
         where colNumber = fromIntegral $ getColNumber colName colNames 0
-    feval colNames (In colName refList) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && (read (row !! colNumber) `elem` refList)
+    feval colNames (In colName refList) = \row -> isJust (readMaybe (row !! colNumber) :: Maybe Float) && read (row !! colNumber) `elem` refList
         where colNumber = fromIntegral $ getColNumber colName colNames 0
     feval colNames (FNot filterCond) = feval colNames filterCond
     feval colNames (FieldEq colName1 colName2) = \row ->    if isJust (readMaybe (row !! colNumber1) :: Maybe Float) && isJust (readMaybe (row !! colNumber2) :: Maybe Float) then (read (row !! colNumber1) :: Float) == (read (row !! colNumber2) :: Float)
@@ -432,7 +438,7 @@ instance FEval String where
 edgeOp3 l1 l2
     -- extract only the distances that are greater or equal to 5
     | distance >= 5 = Just (show distance)
-    | otherwise = Nothing 
+    | otherwise = Nothing
     where
         -- calculate the distance
         -- iterate through the lecture_grades table and check if the points from the questions are equal
@@ -451,3 +457,131 @@ similarities_query = Sort "Value" $ Graph edgeOp3 $ Filter (FNot (Eq "Email" "")
         op el acc
             | el == "" = acc
             | otherwise = read el + acc
+
+-- TASK SET 4
+-- TASK 1
+-- Levenshtein distance between 2 strings implemented with lazy dynamic programming
+distanceLevenshtein :: String -> String -> Int
+distanceLevenshtein a b = matrix ! (length a, length b)
+    where
+        bounds = ((0, 0), (length a, length b))
+        matrix = listArray bounds [distance i j | (i, j) <- range bounds]
+        as = array (1, length a) (zip [1..] a)
+        bs = array (1, length b) (zip [1..] b)
+        distance i j
+            | i == 0 = j
+            | j == 0 = i
+            | otherwise = minimum [matrix ! (i - 1, j) + 1, matrix ! (i, j - 1) + 1,
+                if as ! i == bs ! j then matrix ! (i - 1, j - 1) else 1 + matrix ! (i - 1, j - 1)]
+
+-- calculate the minimum distance from the value from the given table to one of
+-- the words from the ref
+calculateMinimumDistance :: String -> [String] -> String -> Int -> (String, Int)
+calculateMinimumDistance _ [] accName acc = (accName, acc)
+calculateMinimumDistance tableValue (x:xs) "" _ = calculateMinimumDistance tableValue xs x (distanceLevenshtein x tableValue)
+calculateMinimumDistance tableValue (x:xs) accName acc
+    | distanceLevenshtein x tableValue < acc = calculateMinimumDistance tableValue xs x (distanceLevenshtein x tableValue)
+    | otherwise  = calculateMinimumDistance tableValue xs accName acc
+
+-- create a map from the wrong words (with typos) to the correct ones (the ones
+-- that have the minimum distance)
+createMapFromWrongToCorrect :: [String] -> [String] -> Map.Map String String
+createMapFromWrongToCorrect refList = foldr op Map.empty
+    where
+        op el acc = Map.insert el (fst (calculateMinimumDistance el refList "" (-1))) acc
+
+correct_table :: String -> CSV -> CSV -> CSV
+correct_table colName table ref_table = write_csv finalTable
+    where
+        refList = castQResultToList $
+            eval $
+            AsList colName $
+            Projection [colName] $
+            FromCSV ref_table
+        tList = castQResultToList $
+            eval $
+            AsList colName $
+            Projection [colName] $
+            FromCSV table
+        ref = castQResultToList $
+            eval $
+            AsList colName $
+            Filter (FNot $ In colName tList) $
+            Projection [colName] $
+            FromCSV ref_table
+        t = castQResultToList $
+            eval $
+            AsList colName $
+            Filter (FNot $ In colName refList) $
+            Projection [colName] $
+            FromCSV table
+        firstTable = castQResultToTable $
+            eval $
+            FromCSV table
+        myMap = createMapFromWrongToCorrect ref t
+        finalTable = (head firstTable):foldr op [] (tail firstTable)
+            where
+                colNumber = fromIntegral $ getColNumber colName (head firstTable) 0
+                op el acc
+                    | Map.notMember (el !! colNumber) myMap = el:acc
+                    | otherwise = (take colNumber el ++ [Map.findWithDefault "" (el !! colNumber) myMap] ++ drop (colNumber + 1) el):acc
+
+-- TASK 2
+gradesSchema = ["Nume", "Punctaj Teme", "Punctaj Curs", "Punctaj Exam", "Punctaj Total"]
+emailMap = correct_table "Nume" email_map_csv hw_grades_csv
+
+calculateHwGrade :: Row -> Row
+calculateHwGrade row
+    | head row /= "" = head row : [printf "%.2f" $ sum $ map op (tail row)]
+    | otherwise = ["", ""]
+        where
+            op el
+                | el == "" = 0
+                | otherwise = read el :: Float
+
+calculateLectureGrade :: Row -> Row
+calculateLectureGrade row
+    | head row /= "" = head row : [printf "%.2f" $ (/ fromIntegral (length (tail row))) $ (*2) (sum $ map op (tail row))]
+    | otherwise = ["", ""]
+        where
+            op el
+                | el == "" = 0
+                | otherwise = read el :: Float
+
+calculateExamGrade :: Row -> Row
+calculateExamGrade row
+    | head row == "" = ["", ""]
+    | otherwise = head row : [printf "%.2f" $ (+ op (last row)) $ (/4) $ sum $ map op (init $ tail row)]
+        where
+            op el
+                | el == "" = 0
+                | otherwise = read el :: Float
+
+extractNameFromEmailMap :: CSV -> String -> String
+extractNameFromEmailMap email_map email = foldr op "" (tail $ castQResultToTable $ eval $ FromCSV email_map)
+    where
+        op el acc
+            | last el == email = head el
+            | otherwise = acc
+
+calculateTotal :: Row -> Row
+calculateTotal row
+    | (op (row !! 1) + op (row !! 2)) < 2.5 = row ++ ["4.00"]
+    | op (row !! 3) < 2.5 = row ++ ["4.00"]
+    | otherwise = row ++ [printf "%.2f" $ min (op (row !! 1) + op (row !! 2)) 5 + op (row !! 3)]
+    where
+        op el
+            | el == "" = 0
+            | otherwise = read el :: Float
+
+emailToName :: Row -> Row
+emailToName row = extractNameFromEmailMap emailMap (head row):tail row
+
+grades :: CSV -> CSV -> CSV -> CSV -> CSV
+grades t1 t2 t3 t4 = show $ eval finalTable
+    where
+        hwGrade = RowMap calculateHwGrade ["Nume", "Punctaj Teme"] $ FromCSV t2
+        lectureGrade = RowMap emailToName ["Nume", "Punctaj Curs"] $ RowMap calculateLectureGrade ["Email", "Punctaj Curs"] $ FromCSV t4
+        examGrade = Sort "Nume" $ RowMap calculateExamGrade ["Nume", "Punctaj Exam"] $ FromCSV t3
+        finalTable = Sort"Nume" $ RowMap calculateTotal gradesSchema $ 
+            TableJoin "Nume" (TableJoin "Nume" hwGrade lectureGrade) examGrade
